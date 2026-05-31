@@ -175,6 +175,12 @@ int cbm_upsert_claude_hooks(const char *settings_path);
  * Returns 0 on success. */
 int cbm_remove_claude_hooks(const char *settings_path);
 
+/* Write the PreToolUse gate shim to <home>/.claude/hooks/. The shim is a thin
+ * wrapper that invokes the compiled `hook-augment` and writes to stdout only —
+ * it must never create a predictable temp/state file (issue #384). Exposed for
+ * testing that security property. */
+void cbm_install_hook_gate_script(const char *home, const char *binary_path);
+
 /* Upsert a BeforeTool hook in ~/.gemini/settings.json for Gemini CLI / Antigravity.
  * Returns 0 on success. */
 int cbm_upsert_gemini_hooks(const char *settings_path);

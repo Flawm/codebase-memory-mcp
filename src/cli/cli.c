@@ -1746,7 +1746,7 @@ int cbm_remove_claude_hooks(const char *settings_path) {
  * a missing/old/hung binary results in a silent exit 0 (issue #362/#288).
  * The legacy filename `cbm-code-discovery-gate` is retained so existing
  * settings.json entries and uninstall keep working with zero migration. */
-static void cbm_install_hook_gate_script(const char *home, const char *binary_path) {
+void cbm_install_hook_gate_script(const char *home, const char *binary_path) {
     if (!home || !binary_path) {
         return;
     }

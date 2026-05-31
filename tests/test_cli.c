@@ -1988,6 +1988,31 @@ TEST(cli_upsert_claude_hook_fresh) {
     PASS();
 }
 
+/* issue #384: the PreToolUse gate shim must never use a predictable /tmp
+ * filename (the old `/tmp/cbm-code-discovery-gate-$PPID` was a symlink-attack
+ * vector). The shim is now a stateless wrapper around the compiled augmenter. */
+TEST(cli_hook_gate_script_no_predictable_tmp_issue384) {
+    char tmpdir[256];
+    snprintf(tmpdir, sizeof(tmpdir), "/tmp/cli-gate-XXXXXX");
+    if (!cbm_mkdtemp(tmpdir))
+        SKIP("cbm_mkdtemp failed");
+
+    cbm_install_hook_gate_script(tmpdir, "/usr/local/bin/codebase-memory-mcp");
+
+    char script_path[512];
+    snprintf(script_path, sizeof(script_path), "%s/.claude/hooks/cbm-code-discovery-gate", tmpdir);
+    const char *data = read_test_file(script_path);
+    ASSERT_NOT_NULL(data);
+    /* No predictable temp/state file and no PPID-derived path. */
+    ASSERT(strstr(data, "/tmp") == NULL);
+    ASSERT(strstr(data, "PPID") == NULL);
+    /* It delegates to the stateless compiled augmenter (stdout only). */
+    ASSERT(strstr(data, "hook-augment") != NULL);
+
+    test_rmdir_r(tmpdir);
+    PASS();
+}
+
 TEST(cli_upsert_claude_hook_existing) {
     char tmpdir[256];
     snprintf(tmpdir, sizeof(tmpdir), "/tmp/cli-hook-XXXXXX");
@@ -2548,6 +2573,7 @@ SUITE(cli) {
     RUN_TEST(cli_agent_instructions_content);
 
     /* Claude Code hooks (5 tests — group D) */
+    RUN_TEST(cli_hook_gate_script_no_predictable_tmp_issue384);
     RUN_TEST(cli_upsert_claude_hook_fresh);
     RUN_TEST(cli_upsert_claude_hook_existing);
     RUN_TEST(cli_upsert_claude_hook_replace);
