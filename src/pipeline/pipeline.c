@@ -117,6 +117,14 @@ static const char *itoa_buf(int val) {
     return bufs[i];
 }
 
+/* Log current + peak RSS at a pipeline phase boundary (memory profiling). */
+static void log_phase_mem(const char *phase) {
+    enum { PL_BYTES_PER_MB = 1024 * 1024 };
+    cbm_log_info("mem.phase", "phase", phase, "rss_mb",
+                 itoa_buf((int)(cbm_mem_rss() / PL_BYTES_PER_MB)), "peak_mb",
+                 itoa_buf((int)(cbm_mem_peak_rss() / PL_BYTES_PER_MB)));
+}
+
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
 cbm_pipeline_t *cbm_pipeline_new(const char *repo_path, const char *db_path,
@@ -584,6 +592,7 @@ static int run_parallel_pipeline(cbm_pipeline_t *p, cbm_pipeline_ctx_t *ctx,
     rc = cbm_build_registry_from_cache(ctx, files, file_count, cache);
     cbm_log_info("pass.timing", "pass", "registry_build", "elapsed_ms",
                  itoa_buf((int)elapsed_ms(*t)));
+    log_phase_mem("registry_build");
     if (rc != 0 || check_cancel(p)) {
         for (int i = 0; i < file_count; i++) {
             if (cache[i]) {
@@ -651,11 +660,13 @@ static int run_parallel_pipeline(cbm_pipeline_t *p, cbm_pipeline_ctx_t *ctx,
     }
     cbm_log_info("pass.timing", "pass", "lsp_cross_prepare", "elapsed_ms",
                  itoa_buf((int)elapsed_ms(*t)));
+    log_phase_mem("lsp_cross_prepare");
     cbm_clock_gettime(CLOCK_MONOTONIC, t);
     rc = cbm_parallel_resolve(ctx, files, file_count, cache, &shared_ids, worker_count, all_defs,
                               def_count, def_modules, module_def_index, &cross_registries);
     cbm_log_info("pass.timing", "pass", "parallel_resolve", "elapsed_ms",
                  itoa_buf((int)elapsed_ms(*t)));
+    log_phase_mem("parallel_resolve");
     cbm_pxc_free_module_def_index(module_def_index);
     cbm_arena_destroy(&cross_lsp_arena); /* releases all per-lang registries */
     free(all_defs);

@@ -22,6 +22,12 @@ enum {
     PP_LOG_THRESH = 24,
     PP_LOG_INTERVAL = 10,
     PP_TIMER_THRESH = 1000,
+    /* Extraction memory back-pressure: when the process is over its RSS budget,
+     * a worker reclaims + naps before pulling another file so peers can finish
+     * and return pages. Bounded spins avoid deadlock when the resident graph
+     * itself is near budget (then proceed with a soft overshoot). */
+    PP_BACKPRESSURE_MAX_SPINS = 40,
+    PP_BACKPRESSURE_NAP_NS = 3000000, /* 3 ms */
 };
 #define PP_NSEC_PER_SEC 1000000000ULL
 #define PP_USEC_PER_MS 1000000ULL
@@ -498,6 +504,24 @@ static void extract_worker(int worker_id, void *ctx_ptr) {
         }
         if (atomic_load_explicit(ec->cancelled, memory_order_relaxed)) {
             break;
+        }
+
+        /* Memory back-pressure (large repos): if the process is over its RSS
+         * budget, reclaim this thread's freed pages and nap so peer workers can
+         * finish their current file and return memory before this worker adds
+         * another parse working set. Caps the concurrent extraction transient
+         * near the budget instead of letting all workers parse their biggest
+         * files at once. Self-disabling when the budget is unset (tests) or RSS
+         * is under budget; bounded spins avoid deadlock when the resident graph
+         * is itself near budget (then proceed with a soft overshoot). */
+        if (cbm_mem_budget() > 0 && cbm_mem_over_budget()) {
+            cbm_mem_collect();
+            for (int bp = 0; bp < PP_BACKPRESSURE_MAX_SPINS && cbm_mem_over_budget() &&
+                             !atomic_load_explicit(ec->cancelled, memory_order_relaxed);
+                 bp++) {
+                struct timespec nap = {0, PP_BACKPRESSURE_NAP_NS};
+                cbm_nanosleep(&nap, NULL);
+            }
         }
 
         int file_idx = ec->sorted[sort_pos].idx;
