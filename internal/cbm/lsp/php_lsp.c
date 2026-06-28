@@ -3434,6 +3434,8 @@ static void flatten_trait_into_class(PHPLSPContext *ctx, CBMTypeRegistry *reg, c
     if (!t)
         t = lookup_type_with_project(ctx, trait_qn);
     const char *canonical_trait_qn = t ? t->qualified_name : trait_qn;
+    if (strcmp(canonical_trait_qn, class_qn) == 0)
+        return;
 
     /* Iterate registry funcs whose receiver_type is the trait.
      *
@@ -3441,7 +3443,8 @@ static void flatten_trait_into_class(PHPLSPContext *ctx, CBMTypeRegistry *reg, c
      * names the trait itself (e.g. `tap(): self` registered as
      * NAMED(trait_qn)), rewrite it to NAMED(using_class_qn) so chains
      * like `$c->tap()->classMethod()` resolve correctly. */
-    for (int i = 0; i < reg->func_count; i++) {
+    int func_count = reg->func_count;
+    for (int i = 0; i < func_count; i++) {
         const CBMRegisteredFunc *src = &reg->funcs[i];
         if (!src->receiver_type || strcmp(src->receiver_type, canonical_trait_qn) != 0) {
             continue;
